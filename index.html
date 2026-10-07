@@ -1,0 +1,209 @@
+<!doctype html>
+<html lang="cs">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<title>W finančák</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Chakra+Petch:wght@600&family=IBM+Plex+Mono:wght@500&family=IBM+Plex+Sans:wght@400;500;600&display=swap">
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.45.4/dist/umd/supabase.min.js"></script>
+<script>
+  // ====== NASTAVENÍ – doplň ze Supabase: Project Settings → API ======
+  const SUPABASE_URL = "https://puhorebnhxgxsceypmmj.supabase.co";
+  const SUPABASE_ANON_KEY = "TVUJ-ANON-KEY";
+</script>
+<style>
+:root{
+  --bg:#F2F4F7;--surface:#FFFFFF;--surface-2:#E8ECF2;--fg:#121821;--muted:#5A6677;--line:#D3DAE4;
+  --accent:#C2541A;--accent-fg:#FFFFFF;
+  --c-structures:#3A68AD;--c-avionika:#1C8574;--c-software:#7550BD;
+  --ok:#22804A;--ok-soft:#DDF1E4;--warn:#A86E13;--warn-soft:#F7ECD6;--bad:#B8372A;--bad-soft:#F7DEDA;
+  --f-display:"Chakra Petch","Segoe UI",system-ui,sans-serif;--f-body:"IBM Plex Sans","Segoe UI",system-ui,sans-serif;--f-mono:"IBM Plex Mono",ui-monospace,Consolas,monospace;
+  color-scheme:light}
+@media (prefers-color-scheme:dark){:root{
+  --bg:#0D1219;--surface:#151C26;--surface-2:#1D2633;--fg:#E5EBF2;--muted:#94A1B3;--line:#2A3544;
+  --accent:#F0874A;--accent-fg:#1A0E06;--c-structures:#80A7E2;--c-avionika:#5CC6B2;--c-software:#B49BF0;
+  --ok:#62CB8C;--ok-soft:#173326;--warn:#E8B24F;--warn-soft:#3A2D14;--bad:#F07D70;--bad-soft:#3D1D1A;color-scheme:dark}}
+*{box-sizing:border-box}
+html,body{margin:0}
+body{background:var(--bg);color:var(--fg);font:15px/1.5 var(--f-body);padding-inline:16px;padding-block:env(safe-area-inset-top,0px) 48px}
+.wrap{max-width:760px;margin:0 auto}
+h1,h2,h3{font-family:var(--f-display);font-weight:600;margin:0;text-wrap:balance}
+h2{font-size:1.3rem}h3{font-size:1.05rem}
+.muted{color:var(--muted)}.small{font-size:.85rem}
+.num{font-family:var(--f-mono);font-variant-numeric:tabular-nums;white-space:nowrap}
+a{color:var(--accent)}
+header.top{display:flex;align-items:center;gap:12px;flex-wrap:wrap;padding-block:18px 12px;border-bottom:1px solid var(--line)}
+header.top h1{font-size:1.4rem;text-transform:uppercase;letter-spacing:.06em}
+header.top h1 b{color:var(--accent)}
+header.top .sp{flex:1}
+nav{display:flex;gap:4px;padding-block:10px;margin-bottom:18px;border-bottom:1px solid var(--line)}
+nav button{background:none;border:0;color:var(--muted);font:500 .95rem var(--f-body);padding:8px 14px;border-radius:6px;cursor:pointer}
+nav button[aria-current="page"]{background:var(--fg);color:var(--bg)}
+.chip{display:inline-flex;align-items:center;gap:6px;padding:3px 10px;border-radius:999px;background:var(--surface-2);font-size:.82rem;font-weight:600;white-space:nowrap}
+.chip i{width:8px;height:8px;border-radius:50%;background:currentColor}
+.panel{background:var(--surface);border:1px solid var(--line);border-radius:8px;padding:18px;display:flex;flex-direction:column;gap:14px;min-width:0}
+.stack{display:flex;flex-direction:column;gap:18px}
+label{display:flex;flex-direction:column;gap:4px;font-size:.85rem;color:var(--muted);font-weight:500}
+input,select,textarea{font:16px var(--f-body);color:var(--fg);background:var(--bg);border:1px solid var(--line);border-radius:6px;padding:10px 12px;width:100%}
+textarea{min-height:70px;resize:vertical}
+:focus-visible{outline:2px solid var(--accent);outline-offset:1px}
+.btn{display:inline-flex;align-items:center;justify-content:center;gap:6px;font:600 .95rem var(--f-body);padding:10px 16px;border-radius:6px;border:1px solid var(--line);background:var(--surface-2);color:var(--fg);cursor:pointer}
+.btn.primary{background:var(--accent);border-color:var(--accent);color:var(--accent-fg)}
+.btn.sm{padding:5px 10px;font-size:.82rem}
+.btn.link{background:none;border:0;color:var(--muted);text-decoration:underline;padding:4px}
+.btn[disabled]{opacity:.55;cursor:wait}
+.row{display:flex;gap:10px;flex-wrap:wrap}.row>*{flex:1 1 140px}
+details summary{cursor:pointer;color:var(--muted);font-size:.88rem}
+.result{border-radius:8px;padding:16px;border:1px solid;display:flex;flex-direction:column;gap:8px}
+.result.ok{background:var(--ok-soft);border-color:var(--ok)}.result.bad{background:var(--bad-soft);border-color:var(--bad)}.result.wait{background:var(--warn-soft);border-color:var(--warn)}
+.result ul{margin:0;padding-left:18px}
+.pill{display:inline-block;padding:2px 9px;border-radius:999px;font-size:.78rem;font-weight:600;white-space:nowrap}
+.pill.ok{background:var(--ok-soft);color:var(--ok)}.pill.warn{background:var(--warn-soft);color:var(--warn)}.pill.bad{background:var(--bad-soft);color:var(--bad)}
+.tbl{overflow-x:auto}
+table{border-collapse:collapse;width:100%;font-size:.9rem}
+th{text-align:left;font-size:.72rem;letter-spacing:.08em;text-transform:uppercase;color:var(--muted);padding:6px;border-bottom:1px solid var(--line)}
+td{padding:8px 6px;border-bottom:1px solid var(--line);vertical-align:top}
+.r{text-align:right}
+.bar{height:6px;border-radius:3px;background:var(--surface-2);overflow:hidden;display:flex;margin-top:4px}
+.bar i{height:100%;background:currentColor}.bar i+i{opacity:.4}
+.req{display:flex;flex-direction:column;gap:6px;padding-block:12px;border-bottom:1px solid var(--line)}
+.req:last-child{border-bottom:0}
+.req .h{display:flex;gap:8px;align-items:baseline;flex-wrap:wrap}
+.req .h b{flex:1 1 200px}
+.req a{overflow-wrap:anywhere;font-size:.8rem}
+.empty{padding:22px;text-align:center;color:var(--muted);border:1.5px dashed var(--line);border-radius:8px}
+.err{color:var(--bad);font-size:.9rem;min-height:1.2em}
+.eyebrow{font-size:.72rem;letter-spacing:.1em;text-transform:uppercase;color:var(--muted);font-weight:600}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <header class="top"><h1><b>W</b> finančák</h1><span class="muted small">Trinity · Manhattan Rockets</span><span class="sp"></span><span id="me"></span></header>
+  <nav id="nav" hidden><button data-tab="zadost">Poslat žádost</button><button data-tab="prehled">Přehled</button></nav>
+  <main id="view"><div class="empty">Načítám…</div></main>
+</div>
+<script>
+const CATS={structures:"Structures",avionika:"Avionika",software:"Software"};
+const STATUS={ok:["Schváleno – proplať u CRS","ok"],approved:["Schváleno Patrikem","ok"],paid:["Proplaceno","ok"],asked:["Čeká na Patrika","warn"],denied:["Zamítnuto – obrať se na Patrika","bad"],rejected:["Zamítnuto Patrikem","bad"]};
+const sb=supabase.createClient(SUPABASE_URL,SUPABASE_ANON_KEY);
+const S={session:null,profile:null,tab:"zadost",authMode:"login",result:null,busy:false,ms:null,budget:[],reqs:[],chan:null};
+const $=s=>document.querySelector(s);
+const esc=v=>String(v??"").replace(/[&<>"']/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
+const kc=n=>new Intl.NumberFormat("cs-CZ",{maximumFractionDigits:0}).format(Math.round(+n||0))+" Kč";
+const d=t=>t?new Date(t).toLocaleDateString("cs-CZ"):"";
+const chip=c=>`<span class="chip" style="color:var(--c-${c})"><i></i><span style="color:var(--fg)">${esc(CATS[c]||c)}</span></span>`;
+
+async function load(){
+  const {data:{session}}=await sb.auth.getSession();S.session=session;
+  if(!session){S.profile=null;return render()}
+  const {data:p}=await sb.from("profiles").select("*").eq("id",session.user.id).single();S.profile=p;
+  if(p&&p.role!=="pending"){await loadData();subscribe()}
+  render();
+}
+async function loadData(){
+  const {data:ms}=await sb.rpc("active_milestone");S.ms=ms?.[0]||null;
+  S.budget=S.ms?((await sb.rpc("budget_usage",{p_milestone:S.ms.id})).data||[]):[];
+  S.reqs=(await sb.from("requests").select("*, items(name), milestones(name)").eq("user_id",S.session.user.id).order("created_at",{ascending:false})).data||[];
+}
+function subscribe(){
+  if(S.chan)return;
+  S.chan=sb.channel("my-req").on("postgres_changes",{event:"*",schema:"public",table:"requests",filter:`user_id=eq.${S.session.user.id}`},async()=>{await loadData();render()}).subscribe();
+}
+
+function render(){
+  const p=S.profile;
+  $("#me").innerHTML=S.session?`${p?.grp?chip(p.grp):""} <button class="btn link" data-act="logout">Odhlásit</button>`:"";
+  $("#nav").hidden=!(p&&p.role!=="pending");
+  document.querySelectorAll("#nav button").forEach(b=>{if(b.dataset.tab===S.tab)b.setAttribute("aria-current","page");else b.removeAttribute("aria-current")});
+  $("#view").innerHTML=!S.session?viewAuth():!p?`<div class="empty">Profil se nenačetl. Obnov stránku.</div>`:p.role==="pending"?viewPending():S.tab==="prehled"?viewOverview():viewRequest();
+}
+function viewAuth(){
+  const reg=S.authMode==="register";
+  return`<form class="panel" id="auth" style="max-width:420px"><h2>${reg?"Registrace":"Přihlášení"}</h2>
+  ${reg?`<label>Jméno<input id="a-name" autocomplete="name" required></label>`:""}
+  <label>E-mail<input id="a-email" type="email" autocomplete="email" required></label>
+  <label>Heslo<input id="a-pass" type="password" autocomplete="${reg?"new-password":"current-password"}" minlength="6" required></label>
+  <div class="err" id="a-err"></div>
+  <button class="btn primary" type="submit">${reg?"Vytvořit účet":"Přihlásit"}</button>
+  <button class="btn link" type="button" data-act="authmode">${reg?"Už mám účet – přihlásit":"Nemám účet – registrovat"}</button></form>`;
+}
+function viewPending(){
+  const p=S.profile;
+  if(p.requested_grp)return`<div class="panel"><h2>Čekáš na Patrika</h2><p>Požádal jsi o zařazení do skupiny ${chip(p.requested_grp)}. Jakmile tě Patrik potvrdí, můžeš posílat žádosti. Stránku pak obnov.</p><button class="btn sm" data-act="reload">Obnovit</button></div>`;
+  return`<div class="panel" style="max-width:480px"><h2>Ve které skupině pracuješ?</h2><p class="muted" style="margin:0">Čerpat budeš jen z rozpočtu své skupiny. Patrik zařazení potvrdí.</p>
+  <label>Skupina<select id="p-grp">${Object.entries(CATS).map(([k,v])=>`<option value="${k}">${v}</option>`).join("")}</select></label>
+  <button class="btn primary" data-act="joingrp">Požádat o zařazení</button></div>`;
+}
+function viewRequest(){
+  if(!S.ms)return`<div class="empty">Teď není aktivní žádný milestone, takže nejde nic čerpat. Obrať se na Patrika.</div>`;
+  const r=S.result;
+  let res="";
+  if(S.busy)res=`<div class="result wait"><b>Kontroluju produkt…</b><span class="small">Stahuju stránku a porovnávám s rozpočtem. Obvykle do 20 s.</span></div>`;
+  else if(r){const q=r.request;const ok=q.status==="ok";res=`<div class="result ${ok?"ok":"bad"}"><h3>${ok?"Sedí s rozpočtem – můžeš proplatit u CRS":"Nesedí s rozpočtem"}</h3>
+    <div><b>${esc(q.product_name)}</b> · ${q.qty} ks · <span class="num">${kc(q.total)}</span>${q.price_source==="estimate"?" (odhad)":""}</div>
+    ${r.item_name?`<div class="small">Položka rozpočtu: <b>${esc(r.item_name)}</b></div>`:""}
+    <ul>${(q.ai_reasons||[]).map(x=>`<li>${esc(x)}</li>`).join("")}</ul>
+    ${ok?`<span class="small">Žádost je uložená a částka rezervovaná.</span>`:q.status==="asked"?`<b class="small">Odesláno Patrikovi, ozve se ti.</b>`:`<span class="small">S prosbou o výjimku se obrať na Patrika – můžeš mu to poslat rovnou odsud.</span><label>Proč to potřebuješ<textarea id="plea"></textarea></label><div><button class="btn primary" data-act="ask" data-id="${q.id}">Poslat Patrikovi</button></div>`}</div>`}
+  return`<div class="stack"><form class="panel" id="reqform"><div><div class="eyebrow">${esc(S.ms.name)}</div><h2>Žádost o proplacení</h2></div>
+  <label>Odkaz na produkt<input id="r-url" type="url" inputmode="url" placeholder="https://…" required autocomplete="off"></label>
+  <label>Popis (nepovinné)<textarea id="r-desc" placeholder="např. 2 ks, na letový počítač"></textarea></label>
+  <details><summary>Počet kusů</summary><label style="margin-top:8px">Kusů<input id="r-qty" type="number" min="1" step="1" placeholder="AI určí sama"></label></details>
+  <div class="err" id="r-err"></div>
+  <button class="btn primary" type="submit" ${S.busy?"disabled":""}>Zkontrolovat a odeslat</button></form>${res}</div>`;
+}
+function viewOverview(){
+  const ms=S.ms;
+  const items=S.budget;const sum=items.reduce((a,i)=>({plan:a.plan+ +i.plan,spent:a.spent+ +i.spent,res:a.res+ +i.reserved}),{plan:0,spent:0,res:0});
+  const g=S.profile.grp;
+  const budget=!ms?`<div class="empty">Žádný aktivní milestone.</div>`:items.length?`<div class="tbl"><table><thead><tr><th>Položka</th><th class="r">Plán</th><th class="r">Zbývá</th></tr></thead><tbody>${items.map(i=>{const max=Math.max(+i.plan,+i.spent+ +i.reserved,1);return`<tr><td>${esc(i.name)}${i.description?`<div class="small muted">${esc(i.description)}</div>`:""}<div class="bar" style="color:var(--c-${i.category})"><i style="width:${i.spent/max*100}%"></i><i style="width:${i.reserved/max*100}%"></i></div></td><td class="r num">${kc(i.plan)}</td><td class="r num" style="color:${+i.remaining<0?"var(--bad)":"inherit"}">${kc(i.remaining)}</td></tr>`}).join("")}</tbody><tfoot><tr><td><b>Celkem</b></td><td class="r num"><b>${kc(sum.plan)}</b></td><td class="r num"><b>${kc(sum.plan-sum.spent-sum.res)}</b></td></tr></tfoot></table></div>`:`<div class="empty">Tvoje skupina nemá v tomto milestonu žádné položky.</div>`;
+  const reqs=S.reqs.length?S.reqs.map(r=>{const [l,t]=STATUS[r.status];return`<div class="req"><div class="h"><b>${esc(r.product_name)}</b><span class="num">${kc(r.status==="paid"?(r.paid_amount??r.total):r.total)}</span><span class="pill ${t}">${l}</span></div>
+    <a href="${esc(r.url)}" target="_blank" rel="noopener">${esc(r.url.replace(/^https?:\/\//,"").slice(0,70))}</a>
+    <span class="small muted">${d(r.created_at)} · ${esc(r.milestones?.name||"")}${r.items?.name?` · ${esc(r.items.name)}`:""}</span>
+    ${r.admin_note?`<span class="small"><b>Patrik:</b> ${esc(r.admin_note)}</span>`:""}
+    <div class="row" style="gap:6px">${r.status==="denied"?`<button class="btn sm" data-act="askfrom" data-id="${r.id}" style="flex:0 0 auto">Poslat Patrikovi</button>`:""}${["ok","denied","asked"].includes(r.status)?`<button class="btn sm" data-act="withdraw" data-id="${r.id}" style="flex:0 0 auto">Stáhnout</button>`:""}</div></div>`}).join(""):`<div class="empty">Zatím žádné žádosti.</div>`;
+  return`<div class="stack">
+  ${ms?`<div class="panel"><div><div class="eyebrow">Aktivní milestone${ms.deadline?` · do ${d(ms.deadline)}`:""}</div><h2>${esc(ms.name)}</h2></div>${ms.goal?`<p style="margin:0" class="muted">${esc(ms.goal)}</p>`:""}</div>`:""}
+  <section class="panel"><div class="row" style="align-items:center"><h3 style="flex:0 1 auto">Rozpočet skupiny</h3><span style="flex:0 1 auto">${chip(g)}</span></div>${budget}<span class="small muted">Plný pruh = proplaceno, světlý = schváleno, čeká na proplacení.</span></section>
+  <section class="panel"><h3>Moje žádosti</h3><div>${reqs}</div></section></div>`;
+}
+
+async function fnError(error){try{const j=await error.context.json();return j.error||error.message}catch{return error.message}}
+document.addEventListener("submit",async e=>{
+  e.preventDefault();
+  if(e.target.id==="auth"){
+    const email=$("#a-email").value.trim(),password=$("#a-pass").value;$("#a-err").textContent="";
+    const res=S.authMode==="register"?await sb.auth.signUp({email,password,options:{data:{name:$("#a-name").value.trim()}}}):await sb.auth.signInWithPassword({email,password});
+    if(res.error){$("#a-err").textContent=res.error.message==="Invalid login credentials"?"Špatný e-mail nebo heslo.":res.error.message;return}
+    if(S.authMode==="register"&&!res.data.session){$("#a-err").textContent="Potvrď registraci v e-mailu a pak se přihlas.";return}
+    load();
+  }
+  if(e.target.id==="reqform"){
+    const url=$("#r-url").value.trim(),description=$("#r-desc").value.trim(),qty=+$("#r-qty").value||undefined;
+    S.busy=true;S.result=null;render();
+    const {data,error}=await sb.functions.invoke("check-request",{body:{url,description,qty}});
+    S.busy=false;
+    if(error){render();$("#r-url").value=url;$("#r-desc").value=description;$("#r-err").textContent=await fnError(error);return}
+    S.result=data;await loadData();render();
+  }
+});
+document.addEventListener("click",async e=>{
+  const b=e.target.closest("[data-act],[data-tab]");if(!b)return;
+  if(b.dataset.tab){S.tab=b.dataset.tab;if(S.tab==="prehled")await loadData();render();return}
+  const id=b.dataset.id;
+  switch(b.dataset.act){
+    case"authmode":S.authMode=S.authMode==="login"?"register":"login";render();break;
+    case"logout":await sb.auth.signOut();if(S.chan){sb.removeChannel(S.chan);S.chan=null}S.result=null;load();break;
+    case"reload":load();break;
+    case"joingrp":await sb.from("profiles").update({requested_grp:$("#p-grp").value}).eq("id",S.session.user.id);load();break;
+    case"ask":{const plea=$("#plea")?.value.trim()||"";const {error}=await sb.from("requests").update({status:"asked",plea}).eq("id",id);if(error)return alert(error.message);S.result.request.status="asked";await loadData();render();break}
+    case"askfrom":{S.tab="zadost";const r=S.reqs.find(x=>x.id===id);S.result={request:r,item_name:r.items?.name};render();break}
+    case"withdraw":{if(!confirm("Opravdu stáhnout žádost?"))break;const {error}=await sb.from("requests").delete().eq("id",id);if(error)return alert(error.message);await loadData();render();break}
+  }
+});
+sb.auth.onAuthStateChange((ev)=>{if(ev==="SIGNED_OUT"||ev==="SIGNED_IN")load()});
+load();
+</script>
+</body>
+</html>
