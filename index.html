@@ -73,6 +73,10 @@ td{padding:8px 6px;border-bottom:1px solid var(--line);vertical-align:top}
 .req .h{display:flex;gap:8px;align-items:baseline;flex-wrap:wrap}
 .req .h b{flex:1 1 200px}
 .req a{overflow-wrap:anywhere;font-size:.8rem}
+.filters{display:flex;gap:6px;flex-wrap:wrap}
+.filters button{font:500 .85rem var(--f-body);padding:5px 12px;border-radius:999px;border:1px solid var(--line);background:none;color:var(--fg);cursor:pointer}
+.filters button[aria-pressed="true"]{background:var(--fg);color:var(--bg);border-color:var(--fg)}
+.grp{border-top:3px solid currentColor}
 .empty{padding:22px;text-align:center;color:var(--muted);border:1.5px dashed var(--line);border-radius:8px}
 .err{color:var(--bad);font-size:.9rem;min-height:1.2em}
 .eyebrow{font-size:.72rem;letter-spacing:.1em;text-transform:uppercase;color:var(--muted);font-weight:600}
@@ -80,130 +84,102 @@ td{padding:8px 6px;border-bottom:1px solid var(--line);vertical-align:top}
 </head>
 <body>
 <div class="wrap">
-  <header class="top"><h1><b>W</b> finančák</h1><span class="muted small">Trinity · Manhattan Rockets</span><span class="sp"></span><span id="me"></span></header>
-  <nav id="nav" hidden><button data-tab="zadost">Poslat žádost</button><button data-tab="prehled">Přehled</button></nav>
+  <header class="top"><h1><b>W</b> finančák</h1><span class="muted small">Trinity · Manhattan Rockets</span></header>
+  <nav id="nav"><button data-tab="zadost" aria-current="page">Poslat žádost</button><button data-tab="prehled">Přehled</button></nav>
   <main id="view"><div class="empty">Načítám…</div></main>
 </div>
 <script>
 const CATS={structures:"Structures",avionika:"Avionika",software:"Software"};
 const STATUS={ok:["Schváleno – proplať u CRS","ok"],approved:["Schváleno Patrikem","ok"],paid:["Proplaceno","ok"],asked:["Čeká na Patrika","warn"],denied:["Zamítnuto – obrať se na Patrika","bad"],rejected:["Zamítnuto Patrikem","bad"]};
-const sb=supabase.createClient(SUPABASE_URL,SUPABASE_ANON_KEY);
-const S={session:null,profile:null,tab:"zadost",authMode:"login",result:null,busy:false,ms:null,budget:[],reqs:[],chan:null};
+const sb=supabase.createClient(SUPABASE_URL,SUPABASE_ANON_KEY,{auth:{persistSession:false}});
+const store={get(k){try{return localStorage.getItem(k)||""}catch{return""}},set(k,v){try{localStorage.setItem(k,v)}catch{}}};
+const S={tab:"zadost",result:null,busy:false,ms:null,budget:[],reqs:[],filter:"all",loadErr:null};
 const $=s=>document.querySelector(s);
 const esc=v=>String(v??"").replace(/[&<>"']/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
 const kc=n=>new Intl.NumberFormat("cs-CZ",{maximumFractionDigits:0}).format(Math.round(+n||0))+" Kč";
 const d=t=>t?new Date(t).toLocaleDateString("cs-CZ"):"";
 const chip=c=>`<span class="chip" style="color:var(--c-${c})"><i></i><span style="color:var(--fg)">${esc(CATS[c]||c)}</span></span>`;
 
-async function load(){
-  const {data:{session}}=await sb.auth.getSession();S.session=session;
-  if(!session){S.profile=null;return render()}
-  const {data:p}=await sb.from("profiles").select("*").eq("id",session.user.id).single();S.profile=p;
-  if(p&&p.role!=="pending"){await loadData();subscribe()}
-  render();
-}
 async function loadData(){
-  const {data:ms}=await sb.rpc("active_milestone");S.ms=ms?.[0]||null;
+  const ms=await sb.rpc("active_milestone");
+  if(ms.error){S.loadErr=ms.error.message;return}
+  S.loadErr=null;S.ms=ms.data?.[0]||null;
   S.budget=S.ms?((await sb.rpc("budget_usage",{p_milestone:S.ms.id})).data||[]):[];
-  S.reqs=(await sb.from("requests").select("*, items(name), milestones(name)").eq("user_id",S.session.user.id).order("created_at",{ascending:false})).data||[];
+  S.reqs=(await sb.from("requests").select("id,created_at,requester_name,category,url,description,product_name,qty,total,paid_amount,price_source,status,ai_reasons,admin_note,plea,items(name),milestones(name)").order("created_at",{ascending:false}).limit(200)).data||[];
 }
-function subscribe(){
-  if(S.chan)return;
-  S.chan=sb.channel("my-req").on("postgres_changes",{event:"*",schema:"public",table:"requests",filter:`user_id=eq.${S.session.user.id}`},async()=>{await loadData();render()}).subscribe();
-}
+let rq=null;function refresh(){clearTimeout(rq);rq=setTimeout(async()=>{await loadData();render()},400)}
+sb.channel("req").on("postgres_changes",{event:"*",schema:"public",table:"requests"},refresh).on("postgres_changes",{event:"*",schema:"public",table:"items"},refresh).subscribe();
 
 function render(){
-  const p=S.profile;
-  $("#me").innerHTML=S.session?`${p?.grp?chip(p.grp):""} <button class="btn link" data-act="logout">Odhlásit</button>`:"";
-  $("#nav").hidden=!(p&&p.role!=="pending");
   document.querySelectorAll("#nav button").forEach(b=>{if(b.dataset.tab===S.tab)b.setAttribute("aria-current","page");else b.removeAttribute("aria-current")});
-  $("#view").innerHTML=!S.session?viewAuth():!p?`<div class="empty">Profil se nenačetl. Obnov stránku.</div>`:p.role==="pending"?viewPending():S.tab==="prehled"?viewOverview():viewRequest();
-}
-function viewAuth(){
-  const reg=S.authMode==="register";
-  return`<form class="panel" id="auth" style="max-width:420px"><h2>${reg?"Registrace":"Přihlášení"}</h2>
-  ${reg?`<label>Jméno<input id="a-name" autocomplete="name" required></label>`:""}
-  <label>E-mail<input id="a-email" type="email" autocomplete="email" required></label>
-  <label>Heslo<input id="a-pass" type="password" autocomplete="${reg?"new-password":"current-password"}" minlength="6" required></label>
-  <div class="err" id="a-err"></div>
-  <button class="btn primary" type="submit">${reg?"Vytvořit účet":"Přihlásit"}</button>
-  <button class="btn link" type="button" data-act="authmode">${reg?"Už mám účet – přihlásit":"Nemám účet – registrovat"}</button></form>`;
-}
-function viewPending(){
-  const p=S.profile;
-  if(p.requested_grp)return`<div class="panel"><h2>Čekáš na Patrika</h2><p>Požádal jsi o zařazení do skupiny ${chip(p.requested_grp)}. Jakmile tě Patrik potvrdí, můžeš posílat žádosti. Stránku pak obnov.</p><button class="btn sm" data-act="reload">Obnovit</button></div>`;
-  return`<div class="panel" style="max-width:480px"><h2>Ve které skupině pracuješ?</h2><p class="muted" style="margin:0">Čerpat budeš jen z rozpočtu své skupiny. Patrik zařazení potvrdí.</p>
-  <label>Skupina<select id="p-grp">${Object.entries(CATS).map(([k,v])=>`<option value="${k}">${v}</option>`).join("")}</select></label>
-  <button class="btn primary" data-act="joingrp">Požádat o zařazení</button></div>`;
+  if(S.loadErr){$("#view").innerHTML=`<div class="empty">Nepodařilo se načíst data (${esc(S.loadErr)}). Zkontroluj nastavení stránky.</div>`;return}
+  const keep={};document.querySelectorAll("#view input,#view textarea,#view select").forEach(e=>{if(e.id)keep[e.id]=e.value});
+  $("#view").innerHTML=S.tab==="prehled"?viewOverview():viewRequest();
+  for(const[k,v]of Object.entries(keep)){const e=document.getElementById(k);if(e&&v!=="")e.value=v}
 }
 function viewRequest(){
   if(!S.ms)return`<div class="empty">Teď není aktivní žádný milestone, takže nejde nic čerpat. Obrať se na Patrika.</div>`;
-  const r=S.result;
-  let res="";
+  const g=store.get("grp"),n=store.get("name");
+  const r=S.result;let res="";
   if(S.busy)res=`<div class="result wait"><b>Kontroluju produkt…</b><span class="small">Stahuju stránku a porovnávám s rozpočtem. Obvykle do 20 s.</span></div>`;
-  else if(r){const q=r.request;const ok=q.status==="ok";res=`<div class="result ${ok?"ok":"bad"}"><h3>${ok?"Sedí s rozpočtem – můžeš proplatit u CRS":"Nesedí s rozpočtem"}</h3>
+  else if(r){const q=r.request;const ok=q.status==="ok";res=`<div class="result ${ok?"ok":q.status==="asked"?"wait":"bad"}"><h3>${ok?"Sedí s rozpočtem – můžeš proplatit u CRS":q.status==="asked"?"Odesláno Patrikovi":"Nesedí s rozpočtem"}</h3>
     <div><b>${esc(q.product_name)}</b> · ${q.qty} ks · <span class="num">${kc(q.total)}</span>${q.price_source==="estimate"?" (odhad)":""}</div>
     ${r.item_name?`<div class="small">Položka rozpočtu: <b>${esc(r.item_name)}</b></div>`:""}
     <ul>${(q.ai_reasons||[]).map(x=>`<li>${esc(x)}</li>`).join("")}</ul>
-    ${ok?`<span class="small">Žádost je uložená a částka rezervovaná.</span>`:q.status==="asked"?`<b class="small">Odesláno Patrikovi, ozve se ti.</b>`:`<span class="small">S prosbou o výjimku se obrať na Patrika – můžeš mu to poslat rovnou odsud.</span><label>Proč to potřebuješ<textarea id="plea"></textarea></label><div><button class="btn primary" data-act="ask" data-id="${q.id}">Poslat Patrikovi</button></div>`}</div>`}
+    ${ok?`<span class="small">Žádost je uložená a částka rezervovaná.</span>`:q.status==="asked"?`<span class="small">Patrik se ti ozve.</span>`:`<span class="small">S prosbou o výjimku se obrať na Patrika – můžeš mu to poslat rovnou odsud.</span><label>Proč to potřebuješ<textarea id="plea"></textarea></label><div><button class="btn primary" data-act="ask" data-id="${q.id}">Poslat Patrikovi</button></div>`}</div>`}
   return`<div class="stack"><form class="panel" id="reqform"><div><div class="eyebrow">${esc(S.ms.name)}</div><h2>Žádost o proplacení</h2></div>
+  <div class="row"><label>Skupina<select id="r-grp" required><option value="">Vyber…</option>${Object.entries(CATS).map(([k,v])=>`<option value="${k}" ${k===g?"selected":""}>${v}</option>`).join("")}</select></label>
+  <label>Tvoje jméno<input id="r-name" value="${esc(n)}" autocomplete="name" required></label></div>
   <label>Odkaz na produkt<input id="r-url" type="url" inputmode="url" placeholder="https://…" required autocomplete="off"></label>
   <label>Popis (nepovinné)<textarea id="r-desc" placeholder="např. 2 ks, na letový počítač"></textarea></label>
   <details><summary>Počet kusů</summary><label style="margin-top:8px">Kusů<input id="r-qty" type="number" min="1" step="1" placeholder="AI určí sama"></label></details>
   <div class="err" id="r-err"></div>
   <button class="btn primary" type="submit" ${S.busy?"disabled":""}>Zkontrolovat a odeslat</button></form>${res}</div>`;
 }
+function budgetTable(cat){
+  const items=S.budget.filter(i=>i.category===cat);
+  if(!items.length)return`<div class="empty small">Skupina v tomto milestonu nic nečerpá.</div>`;
+  const sum=items.reduce((a,i)=>({plan:a.plan+ +i.plan,rem:a.rem+ +i.remaining}),{plan:0,rem:0});
+  return`<div class="tbl"><table><thead><tr><th>Položka</th><th class="r">Plán</th><th class="r">Zbývá</th></tr></thead><tbody>${items.map(i=>{const max=Math.max(+i.plan,+i.spent+ +i.reserved,1);return`<tr><td>${esc(i.name)}${i.description?`<div class="small muted">${esc(i.description)}</div>`:""}<div class="bar" style="color:var(--c-${i.category})"><i style="width:${i.spent/max*100}%"></i><i style="width:${i.reserved/max*100}%"></i></div></td><td class="r num">${+i.plan?kc(i.plan):"—"}</td><td class="r num" style="color:${+i.remaining<0?"var(--bad)":"inherit"}">${i.item_id?kc(i.remaining):""}</td></tr>`}).join("")}</tbody><tfoot><tr><td><b>Celkem</b></td><td class="r num"><b>${kc(sum.plan)}</b></td><td class="r num"><b>${kc(sum.rem)}</b></td></tr></tfoot></table></div>`;
+}
 function viewOverview(){
   const ms=S.ms;
-  const items=S.budget;const sum=items.reduce((a,i)=>({plan:a.plan+ +i.plan,spent:a.spent+ +i.spent,res:a.res+ +i.reserved}),{plan:0,spent:0,res:0});
-  const g=S.profile.grp;
-  const budget=!ms?`<div class="empty">Žádný aktivní milestone.</div>`:items.length?`<div class="tbl"><table><thead><tr><th>Položka</th><th class="r">Plán</th><th class="r">Zbývá</th></tr></thead><tbody>${items.map(i=>{const max=Math.max(+i.plan,+i.spent+ +i.reserved,1);return`<tr><td>${esc(i.name)}${i.description?`<div class="small muted">${esc(i.description)}</div>`:""}<div class="bar" style="color:var(--c-${i.category})"><i style="width:${i.spent/max*100}%"></i><i style="width:${i.reserved/max*100}%"></i></div></td><td class="r num">${kc(i.plan)}</td><td class="r num" style="color:${+i.remaining<0?"var(--bad)":"inherit"}">${kc(i.remaining)}</td></tr>`}).join("")}</tbody><tfoot><tr><td><b>Celkem</b></td><td class="r num"><b>${kc(sum.plan)}</b></td><td class="r num"><b>${kc(sum.plan-sum.spent-sum.res)}</b></td></tr></tfoot></table></div>`:`<div class="empty">Tvoje skupina nemá v tomto milestonu žádné položky.</div>`;
-  const reqs=S.reqs.length?S.reqs.map(r=>{const [l,t]=STATUS[r.status];return`<div class="req"><div class="h"><b>${esc(r.product_name)}</b><span class="num">${kc(r.status==="paid"?(r.paid_amount??r.total):r.total)}</span><span class="pill ${t}">${l}</span></div>
+  const list=S.reqs.filter(r=>S.filter==="all"||r.category===S.filter);
+  const reqs=list.length?list.map(r=>{const [l,t]=STATUS[r.status];return`<div class="req"><div class="h"><b>${esc(r.product_name)}</b><span class="num">${kc(r.status==="paid"?(r.paid_amount??r.total):r.total)}</span><span class="pill ${t}">${l}</span></div>
     <a href="${esc(r.url)}" target="_blank" rel="noopener">${esc(r.url.replace(/^https?:\/\//,"").slice(0,70))}</a>
-    <span class="small muted">${d(r.created_at)} · ${esc(r.milestones?.name||"")}${r.items?.name?` · ${esc(r.items.name)}`:""}</span>
+    <span class="small muted">${esc(r.requester_name||"—")} · ${chip(r.category)} · ${d(r.created_at)}${r.items?.name?` · ${esc(r.items.name)}`:""}</span>
     ${r.admin_note?`<span class="small"><b>Patrik:</b> ${esc(r.admin_note)}</span>`:""}
-    <div class="row" style="gap:6px">${r.status==="denied"?`<button class="btn sm" data-act="askfrom" data-id="${r.id}" style="flex:0 0 auto">Poslat Patrikovi</button>`:""}${["ok","denied","asked"].includes(r.status)?`<button class="btn sm" data-act="withdraw" data-id="${r.id}" style="flex:0 0 auto">Stáhnout</button>`:""}</div></div>`}).join(""):`<div class="empty">Zatím žádné žádosti.</div>`;
+    ${r.status==="denied"?`<div><button class="btn sm" data-act="askfrom" data-id="${r.id}">Poslat Patrikovi</button></div>`:""}</div>`}).join(""):`<div class="empty">Žádné žádosti.</div>`;
   return`<div class="stack">
-  ${ms?`<div class="panel"><div><div class="eyebrow">Aktivní milestone${ms.deadline?` · do ${d(ms.deadline)}`:""}</div><h2>${esc(ms.name)}</h2></div>${ms.goal?`<p style="margin:0" class="muted">${esc(ms.goal)}</p>`:""}</div>`:""}
-  <section class="panel"><div class="row" style="align-items:center"><h3 style="flex:0 1 auto">Rozpočet skupiny</h3><span style="flex:0 1 auto">${chip(g)}</span></div>${budget}<span class="small muted">Plný pruh = proplaceno, světlý = schváleno, čeká na proplacení.</span></section>
-  <section class="panel"><h3>Moje žádosti</h3><div>${reqs}</div></section></div>`;
+  ${ms?`<div class="panel"><div><div class="eyebrow">Aktivní milestone${ms.deadline?` · do ${d(ms.deadline)}`:""}</div><h2>${esc(ms.name)}</h2></div>${ms.goal?`<p style="margin:0" class="muted">${esc(ms.goal)}</p>`:""}</div>
+  ${Object.keys(CATS).map(c=>`<section class="panel grp" style="color:var(--c-${c})"><h3>${CATS[c]}</h3><div style="color:var(--fg)">${budgetTable(c)}</div></section>`).join("")}
+  <span class="small muted">Plný pruh = proplaceno, světlý = schváleno, čeká na proplacení.</span>`:`<div class="empty">Žádný aktivní milestone.</div>`}
+  <section class="panel"><h3>Žádosti</h3><div class="filters">${[["all","Všechny"],...Object.entries(CATS)].map(([k,v])=>`<button data-filter="${k}" aria-pressed="${S.filter===k}">${v}</button>`).join("")}</div><div>${reqs}</div></section></div>`;
 }
 
 async function fnError(error){try{const j=await error.context.json();return j.error||error.message}catch{return error.message}}
 document.addEventListener("submit",async e=>{
-  e.preventDefault();
-  if(e.target.id==="auth"){
-    const email=$("#a-email").value.trim(),password=$("#a-pass").value;$("#a-err").textContent="";
-    const res=S.authMode==="register"?await sb.auth.signUp({email,password,options:{data:{name:$("#a-name").value.trim()}}}):await sb.auth.signInWithPassword({email,password});
-    if(res.error){$("#a-err").textContent=res.error.message==="Invalid login credentials"?"Špatný e-mail nebo heslo.":res.error.message;return}
-    if(S.authMode==="register"&&!res.data.session){$("#a-err").textContent="Potvrď registraci v e-mailu a pak se přihlas.";return}
-    load();
-  }
-  if(e.target.id==="reqform"){
-    const url=$("#r-url").value.trim(),description=$("#r-desc").value.trim(),qty=+$("#r-qty").value||undefined;
-    S.busy=true;S.result=null;render();
-    const {data,error}=await sb.functions.invoke("check-request",{body:{url,description,qty}});
-    S.busy=false;
-    if(error){render();$("#r-url").value=url;$("#r-desc").value=description;$("#r-err").textContent=await fnError(error);return}
-    S.result=data;await loadData();render();
-  }
+  e.preventDefault();if(e.target.id!=="reqform")return;
+  const category=$("#r-grp").value,name=$("#r-name").value.trim(),url=$("#r-url").value.trim(),description=$("#r-desc").value.trim(),qty=+$("#r-qty").value||undefined;
+  if(!category){$("#r-err").textContent="Vyber skupinu.";return}
+  store.set("grp",category);store.set("name",name);
+  S.busy=true;S.result=null;render();
+  const {data,error}=await sb.functions.invoke("check-request",{body:{category,name,url,description,qty}});
+  S.busy=false;
+  if(error){render();$("#r-err").textContent=await fnError(error);return}
+  S.result=data;$("#r-url").value="";$("#r-desc").value="";$("#r-qty").value="";await loadData();render();
+  for(const id of["r-url","r-desc","r-qty"]){const el=document.getElementById(id);if(el)el.value=""}
 });
 document.addEventListener("click",async e=>{
-  const b=e.target.closest("[data-act],[data-tab]");if(!b)return;
+  const b=e.target.closest("[data-act],[data-tab],[data-filter]");if(!b)return;
   if(b.dataset.tab){S.tab=b.dataset.tab;if(S.tab==="prehled")await loadData();render();return}
+  if(b.dataset.filter){S.filter=b.dataset.filter;render();return}
   const id=b.dataset.id;
-  switch(b.dataset.act){
-    case"authmode":S.authMode=S.authMode==="login"?"register":"login";render();break;
-    case"logout":await sb.auth.signOut();if(S.chan){sb.removeChannel(S.chan);S.chan=null}S.result=null;load();break;
-    case"reload":load();break;
-    case"joingrp":await sb.from("profiles").update({requested_grp:$("#p-grp").value}).eq("id",S.session.user.id);load();break;
-    case"ask":{const plea=$("#plea")?.value.trim()||"";const {error}=await sb.from("requests").update({status:"asked",plea}).eq("id",id);if(error)return alert(error.message);S.result.request.status="asked";await loadData();render();break}
-    case"askfrom":{S.tab="zadost";const r=S.reqs.find(x=>x.id===id);S.result={request:r,item_name:r.items?.name};render();break}
-    case"withdraw":{if(!confirm("Opravdu stáhnout žádost?"))break;const {error}=await sb.from("requests").delete().eq("id",id);if(error)return alert(error.message);await loadData();render();break}
-  }
+  if(b.dataset.act==="askfrom"){const r=S.reqs.find(x=>x.id===id);S.tab="zadost";S.result={request:r,item_name:r.items?.name};render();window.scrollTo(0,0)}
+  if(b.dataset.act==="ask"){b.disabled=true;const plea=$("#plea")?.value.trim()||"";const {data,error}=await sb.functions.invoke("check-request",{body:{action:"ask",id,plea}});
+    if(error){b.disabled=false;alert(await fnError(error));return}S.result={...S.result,request:data.request};await loadData();render()}
 });
-sb.auth.onAuthStateChange((ev)=>{if(ev==="SIGNED_OUT"||ev==="SIGNED_IN")load()});
-load();
+(async()=>{await loadData();render()})();
 </script>
 </body>
 </html>
